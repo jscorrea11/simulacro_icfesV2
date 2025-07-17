@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css';
 // Importo el logo
-import logo from './assets/logo.jpg';
+import logo from './assets/logo.png';
 
 const preguntas = [
   // Matemáticas (reales)
@@ -1785,14 +1785,12 @@ preguntas.forEach((preg, idx) => {
   }
 });
 
-function exportarResultados(preguntas, respuestas, datos) {
-  const filas = preguntas.map((preg, idx) => {
-    const correcta = respuestas[idx] === preg.respuesta;
-    // Solo exporto la pregunta principal (última línea)
-    const preguntaCorta = preg.texto.split('\n').filter(Boolean).pop();
-    return `"${preg.materia}","${preguntaCorta.replace(/"/g, '""')}","${preg.opciones[respuestas[idx]] ?? ''}","${preg.opciones[preg.respuesta]}","${correcta ? 'Correcta' : 'Incorrecta'}"`;
-  });
-  const encabezado = 'Materia,Pregunta,Respuesta seleccionada,Respuesta correcta,Estado';
+function exportarResultados(preguntas, respuestas, datos, resumenMaterias) {
+  // Solo exportar el resumen de materias
+  const encabezado = 'Materia,Correctas,Total,Promedio (%),Nota (0-5)';
+  const filas = resumenMaterias.map(m =>
+    `"${m.materia}","${m.correctas}","${m.total}","${m.promedio}","${m.nota}"`
+  );
   // Agrego BOM UTF-8 al inicio para compatibilidad con Excel
   const info = `Nombre:,"${datos.nombre}"
 Identificación:,"${datos.identificacion}"
@@ -1811,12 +1809,66 @@ Institución:,"${datos.institucion}"
 }
 
 function App() {
-  const [datos, setDatos] = useState({ nombre: '', identificacion: '', institucion: '' });
+  // Leer estado inicial de localStorage
+  const getInitialActual = () => {
+    const saved = localStorage.getItem('simulador_actual');
+    return saved ? Number(saved) : 0;
+  };
+  const getInitialRespuestas = () => {
+    const saved = localStorage.getItem('simulador_respuestas');
+    return saved ? JSON.parse(saved) : Array(preguntas.length).fill(null);
+  };
+  const getInitialDatos = () => {
+    const saved = localStorage.getItem('simulador_datos');
+    return saved ? JSON.parse(saved) : { nombre: '', identificacion: '', institucion: '' };
+  };
+  const getInitialDatosCompletos = () => {
+    const saved = localStorage.getItem('simulador_datosCompletos');
+    return saved ? JSON.parse(saved) : false;
+  };
+  const getInitialEnviado = () => {
+    const saved = localStorage.getItem('simulador_enviado');
+    return saved ? JSON.parse(saved) : false;
+  };
+
+  const [datos, setDatos] = useState(getInitialDatos());
   const [errores, setErrores] = useState({});
-  const [datosCompletos, setDatosCompletos] = useState(false);
-  const [actual, setActual] = useState(0);
-  const [respuestas, setRespuestas] = useState(Array(preguntas.length).fill(null));
-  const [enviado, setEnviado] = useState(false);
+  const [datosCompletos, setDatosCompletos] = useState(getInitialDatosCompletos());
+  const [actual, setActual] = useState(getInitialActual());
+  const [respuestas, setRespuestas] = useState(getInitialRespuestas());
+  const [enviado, setEnviado] = useState(getInitialEnviado());
+
+  // Persistir en localStorage
+  useEffect(() => {
+    localStorage.setItem('simulador_actual', actual);
+  }, [actual]);
+  useEffect(() => {
+    localStorage.setItem('simulador_respuestas', JSON.stringify(respuestas));
+  }, [respuestas]);
+  useEffect(() => {
+    localStorage.setItem('simulador_datos', JSON.stringify(datos));
+  }, [datos]);
+  useEffect(() => {
+    localStorage.setItem('simulador_datosCompletos', JSON.stringify(datosCompletos));
+  }, [datosCompletos]);
+  useEffect(() => {
+    localStorage.setItem('simulador_enviado', JSON.stringify(enviado));
+  }, [enviado]);
+
+  // Botón para reiniciar todo
+  const handleSalir = () => {
+    localStorage.removeItem('simulador_actual');
+    localStorage.removeItem('simulador_respuestas');
+    localStorage.removeItem('simulador_datos');
+    localStorage.removeItem('simulador_datosCompletos');
+    localStorage.removeItem('simulador_enviado');
+    setDatos({ nombre: '', identificacion: '', institucion: '' });
+    setErrores({});
+    setDatosCompletos(false);
+    setActual(0);
+    setRespuestas(Array(preguntas.length).fill(null));
+    setEnviado(false);
+  };
 
   const handleChangeDatos = (e) => {
     setDatos({ ...datos, [e.target.name]: e.target.value });
@@ -1855,11 +1907,21 @@ function App() {
     const indices = preguntas.map((p, i) => p.materia === materia ? i : -1).filter(i => i !== -1);
     const total = indices.length;
     const correctas = indices.filter(i => respuestas[i] === preguntas[i].respuesta).length;
-    return { materia, correctas, total, promedio: (correctas / total * 100).toFixed(1) };
+    // Nota sobre 5.0
+    const nota = ((correctas / total) * 5).toFixed(1);
+    return { materia, correctas, total, promedio: (correctas / total * 100).toFixed(1), nota };
   });
 
   return (
     <div className="container py-4">
+      {/* Botón Salir en la esquina superior derecha */}
+      <button
+        className="btn btn-outline-danger position-absolute"
+        style={{ top: 16, right: 16, zIndex: 1000 }}
+        onClick={handleSalir}
+      >
+        Salir
+      </button>
       <div className="text-center mb-4">
         <img src={logo} alt="Logo" style={{maxWidth: 280, height: 'auto'}} className="mb-2 rounded shadow" />
       </div>
@@ -1892,7 +1954,7 @@ function App() {
         <div className="resultado card shadow p-4 mb-4">
           <h2 className="mb-3 text-success">¡Examen finalizado!</h2>
           <p className="lead">Tu puntaje: <b>{puntaje}</b> de {preguntas.length}</p>
-          <button className="btn btn-outline-primary mb-4" onClick={() => exportarResultados(preguntas, respuestas, datos)}>Exportar resultados</button>
+          <button className="btn btn-outline-primary mb-4" onClick={() => exportarResultados(preguntas, respuestas, datos, resumenMaterias)}>Exportar resultados</button>
           {/* Tabla de promedios por materia */}
           <div className="table-responsive mb-4">
             <table className="table table-bordered table-striped w-auto mx-auto">
@@ -1902,6 +1964,7 @@ function App() {
                   <th>Correctas</th>
                   <th>Total</th>
                   <th>Promedio (%)</th>
+                  <th>Nota (0-5)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1911,6 +1974,7 @@ function App() {
                     <td>{m.correctas}</td>
                     <td>{m.total}</td>
                     <td style={{color: Number(m.promedio) > 50 ? 'green' : undefined, fontWeight: 'bold'}}>{m.promedio}</td>
+                    <td style={{color: Number(m.nota) > 2.5 ? 'green' : undefined, fontWeight: 'bold'}}>{m.nota}</td>
                   </tr>
                 ))}
               </tbody>
