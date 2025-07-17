@@ -1938,7 +1938,7 @@ function App() {
             preguntas[actual].imagen ? (
               <div className="text-center mb-3">
                 <img
-                  src={`/src/assets/${preguntas[actual].imagen}`}
+                  src={new URL(`./assets/${preguntas[actual].imagen}`, import.meta.url).pathname}
                   alt="Imagen de apoyo"
                   style={{maxWidth: '100%', maxHeight: 500, objectFit: 'contain'}}
                   className="img-fluid"
